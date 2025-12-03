@@ -1,222 +1,162 @@
-# Práctica DevOps: Vagrant + Docker + Node.js + MariaDB
+# Proyecto Vagrant + Puppet + Jenkins
 
-Este proyecto contiene una práctica integrada donde se levanta una máquina virtual con **Vagrant** y, dentro de ella, se despliega una aplicación web en **Node.js** conectada a una base de datos **MariaDB** usando **Docker** y **docker compose**.
-
-La aplicación es un pequeño **visor de eventos (logs)** que permite:
-- Ver registros almacenados en la tabla `event_logs` de la base `logsdb`.
-- Insertar nuevos eventos mediante un formulario web.
+Este entorno implementa una máquina virtual Ubuntu 22.04 (Jammy) aprovisionada con Puppet Server, Puppet Agent y Jenkins mediante un conjunto de scripts de shell y manifiestos Puppet. El objetivo es contar con un laboratorio reproducible para prácticas de DevOps e Infraestructura como Código.
 
 ---
 
-## Estructura del repositorio
+##  Componentes implementados
 
-```text
-.
-├── Vagrantfile
-├── provision.sh
-├── README.md
-└── Docker/
-    └── utn-devops-app/
-        ├── Dockerfile
-        ├── docker-compose.yml
-        ├── README.md       # README específico de la app
-        ├── app/
-        │   ├── package.json
-        │   └── server.js
-        └── db/
-            └── db_init.sql
+### 1. **Puppet Master + Puppet Agent en la misma VM**
+El provisioning instala:
+- Puppet Server (master)
+- Puppet Agent (cliente)
+- Java OpenJDK 17 (requisito de Puppet Server)
+- Gestión del usuario y grupo `puppet`
+- Habilitación del agente Puppet como servicio
+
+El agente consulta al server local mediante:
 ```
-
-### Archivos principales
-
-- **Vagrantfile**  
-  Define una VM (por ejemplo basada en Ubuntu) que se levanta con Vagrant, configura red, recursos básicos y ejecuta el script `provision.sh` como _provisioner_.
-
-- **provision.sh**  
-  Script de aprovisionamiento que, dentro de la VM:
-  - Actualiza la lista de paquetes.
-  - Instala `docker` y `docker-compose` (según la versión que se haya preparado).
-  - Descarga o asegura la presencia del proyecto `Docker/utn-devops-app`.
-  - Ejecuta `docker compose up -d --build` dentro del directorio de la app para levantar los contenedores.
-
-- **Docker/utn-devops-app/Dockerfile**  
-  Define la imagen de la aplicación Node.js:
-  - Parte de `node:20-alpine`.
-  - Establece el `WORKDIR` en `/usr/src/app`.
-  - Copia `app/package*.json` para instalar dependencias (`npm install --omit=dev`).
-  - Copia el resto del código de la carpeta `app/`.
-  - Expone el puerto **80** dentro del contenedor.
-  - Usa `npm start` como comando de entrada.
-
-- **Docker/utn-devops-app/docker-compose.yml**  
-  Orquesta dos servicios:
-  - `webapp`: build desde el Dockerfile, expone el puerto `8080` del host al `80` del contenedor.
-  - `mariadb`: usa la imagen oficial `mariadb:11` y configura:
-    - `MARIADB_ROOT_PASSWORD`
-    - `MARIADB_DATABASE=logsdb`
-    - `MARIADB_USER=logsuser`
-    - `MARIADB_PASSWORD=logspass`  
-    Monta:
-    - `./db/db_init.sql` en `/docker-entrypoint-initdb.d/db_init.sql` (para inicializar la base).
-    - Un volumen `db_data` para persistencia de datos.
-
-- **Docker/utn-devops-app/app/server.js**  
-  Servidor Node.js con **Express** que:
-  - Se conecta a MariaDB usando `mysql2/promise` y un **pool de conexiones**.
-  - Usa variables de entorno (o valores por defecto) para configurar la base:
-    - `DB_HOST` (por defecto `mariadb`)
-    - `DB_NAME` (por defecto `logsdb`)
-    - `DB_USER` (por defecto `logsuser`)
-    - `DB_PASS` (por defecto `logspass`)
-  - Expone un formulario HTML para crear nuevos eventos y una tabla para listar los últimos registros en `event_logs`.
-  - Escucha en el puerto **80** dentro del contenedor (configurable con la variable `PORT`).
-
-- **Docker/utn-devops-app/app/package.json**  
-  Define el proyecto Node.js:
-  - Dependencias:
-    - `express`
-    - `mysql2`
-  - Script:
-    - `"start": "node server.js"`
-
-- **Docker/utn-devops-app/db/db_init.sql**  
-  Script de inicialización que, cuando el contenedor de MariaDB se levanta por primera vez:
-  - Crea la base `logsdb` (si no existe).
-  - Crea el usuario `logsuser` con contraseña `logspass` y le otorga permisos sobre `logsdb`.
-  - Crea la tabla `event_logs`:
-    - `id` (clave primaria, autoincremental)
-    - `event_time` (fecha/hora del evento)
-    - `level` (nivel: INFO, WARN, ERROR, etc.)
-    - `source` (origen del evento)
-    - `message` (detalle del evento)
-  - Inserta algunos eventos de ejemplo para probar el visor.
+server = localhost
+environment = production
+```
 
 ---
 
-## Requisitos previos
+### 2. **Archivo `puppet.conf`**
+Incluido en el host y transferido a la VM por el script de aprovisionamiento:
 
-En la **máquina host** necesitas tener instalado:
+```ini
+[main]
+environment = production
 
-- **Vagrant**
-- **VirtualBox** (u otro provider compatible configurado en el Vagrantfile)
-- Conectividad a internet (para descargar la box base, paquetes y las imágenes de Docker).
+[master]
+ssl_client_header = SSL_CLIENT_S_DN
+ssl_client_verify_header = SSL_CLIENT_VERIFY
+certname = ubuntu-devops
+report = true
+reports = log
 
-Dentro de la **VM**, el `provision.sh` se encargará de instalar:
+[agent]
+server = ubuntu-devops
+certname = ubuntu-devops
+pluginsync = true
+report     = true
+summarize  = true
+runinterval = 30m
+report = true
+```
 
-- Docker
-- docker compose
-- Dependencias necesarias para la práctica
+Este archivo configura al agente para comunicarse con el servidor Puppet interno y define el entorno de trabajo.
 
 ---
 
-## Puesta en marcha
+### 3. **Puppet Module: Jenkins**
+Se creó el módulo `jenkins` dentro de `puppet/modules/jenkins/manifests/init.pp`, el cual:
 
-### 1. Levantar la máquina virtual con Vagrant
+- Instala OpenJDK
+- Agrega la clave y repositorio oficial de Jenkins
+- Ejecuta `apt update` automáticamente cuando cambia el repo
+- Instala el paquete `jenkins`
+- Habilita y levanta el servicio Jenkins
 
-Desde el directorio raíz donde se encuentra el `Vagrantfile`:
+Manifiesto principal (`site.pp`):
 
-```bash
-vagrant up
+```puppet
+node default {
+  include jenkins
+}
 ```
 
-Esto va a:
-1. Descargar la box base (la primera vez).
-2. Crear y bootear la VM.
-3. Ejecutar el script `provision.sh` dentro de la VM.
+Jenkins queda expuesto en el puerto **8080**, accesible desde el host.
 
-Para conectarte a la VM:
+---
 
-```bash
-vagrant ssh
+### 4. **Script para agregar entrada en `/etc/hosts`**
+Se creó un script en Bash que asegura que la siguiente línea exista:
+
+```
+127.0.0.1   ubuntu-devops
 ```
 
-### 2. Verificar Docker dentro de la VM
-
-Dentro de la VM, valida que Docker funciona:
+Script:
 
 ```bash
-docker ps
+HOST_FILE="/etc/hosts"
+NEW_LOCALHOST="127.0.0.1  ubuntu-devops"
+
+echo "Agregando entrada a /etc/hosts..."
+echo "$NEW_LOCALHOST" | sudo tee -a "$HOST_FILE" > /dev/null
 ```
 
-Deberías ver una lista (quizás vacía, pero sin errores).
+---
 
-### 3. Levantar los contenedores de la aplicación
+### 5. **Provisioning Script (`provision_puppet.sh`)**
+Este script realiza:
 
-Si el `provision.sh` ya ejecutó `docker compose up -d --build`, la app debería estar corriendo.  
-Si necesitás hacerlo manualmente:
+- Instalación de Puppet Server y Agent
+- Gestión del usuario y grupo `puppet`
+- Ajuste de memoria de Puppet Server para funcionar en una VM de 2GB (`-Xms512m -Xmx512m`)
+- Transferencia desde el host de:
+  - `puppet.conf`
+  - `manifests/`
+  - `modules/`
+- Habilitación del servicio Puppet Agent
+- Levantado del servicio Puppet Server
 
-```bash
-cd /vagrant/Docker/utn-devops-app
-docker compose up -d --build
+---
+
+### 6. **Problema detectado y solución**
+El servidor Puppet no arrancaba debido a:
+
+```
+Native memory allocation (mmap) failed to map 2147483648 bytes
 ```
 
-Esto construirá la imagen de la webapp y levantará los servicios `webapp` y `mariadb`.
+Causa:
+- Puppet Server usa por defecto `-Xms2g -Xmx2g`
+- La VM tenía solo 2GB de RAM y **0 swap**
 
-### 4. Acceder a la aplicación web
+Solución implementada:
+- Reducción de heap Java a **512m** mediante edición de:
+  `/etc/puppetlabs/puppetserver/conf.d/java_args.conf`
 
-En tu host, abre un navegador y visita:
+---
 
-```text
+##  Acceso a Jenkins
+
+En el `Vagrantfile` se requiere exponer el puerto:
+
+```ruby
+config.vm.network "forwarded_port", guest: 8080, host: 8080
+```
+
+Luego ingresar desde el host:
+
+```
 http://localhost:8080
 ```
 
-Te aparecerá el **visor de eventos**:
-- En la parte superior, un formulario para crear nuevos eventos.
-- Debajo, una tabla con los eventos existentes, incluyendo los registros creados por `db_init.sql`.
+---
 
-![Visor de Eventos](GRUPO2-PRACTICA2.png)
+##  Estructura del proyecto en el Host
 
+```
+puppet/
+├── puppet.conf
+├── manifests/
+│   └── site.pp
+└── modules/
+    └── jenkins/
+        └── manifests/
+            └── init.pp
+provision_puppet.sh
+add_hosts_entry.sh
+Vagrantfile
+```
 
 ---
 
-## Flujo de datos
+##  Estado final del laboratorio
 
-1. El usuario accede a `http://localhost:8080`.
-2. El contenedor `webapp` (Node.js) recibe la petición en su puerto 80 y renderiza la página HTML.
-3. Para mostrar la tabla de eventos, `server.js` consulta la tabla `event_logs` en la base `logsdb` del contenedor `mariadb`.
-4. Cuando se envía el formulario, el servidor inserta un nuevo registro en `event_logs` con la fecha/hora actual (`NOW()` en SQL).
-5. Al redirigir nuevamente a `/`, la tabla muestra el nuevo registro junto con los existentes.
-
----
-
-## Comandos útiles
-
-Dentro de la VM:
-
-Listar contenedores en ejecución:
-
-```bash
-docker ps
-```
-
-Ver logs de la webapp:
-
-```bash
-docker logs -f <id_o_nombre_del_contenedor_webapp>
-```
-
-Ver logs de MariaDB:
-
-```bash
-docker logs -f <id_o_nombre_del_contenedor_mariadb>
-```
-
-Detener la aplicación (contenedores):
-
-```bash
-cd /ruta/al/proyecto/Docker/utn-devops-app
-docker compose down
-```
-
-Apagar la VM:
-
-```bash
-exit      # salir de la sesión SSH
-vagrant halt
-```
-
-Destruir la VM (para recrear desde cero):
-
-```bash
-vagrant destroy -f
-```
+![Página inicial de Jenkins](GRUPO2-PRACTICA3_1.png)
+![Instalacion de dependencias en Jenkins](GRUPO2-PRACTICA3_2.png)
