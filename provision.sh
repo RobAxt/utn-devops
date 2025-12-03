@@ -116,7 +116,7 @@ sudo /opt/puppetlabs/bin/puppet agent -t
 
 # limpieza de configuración del dominio utn-devops.localhost es nuestro nodo agente.
 # en nuestro caso es la misma máquina
-sudo puppet node clean ubuntu-devops|| true
+sudo /opt/puppetlabs/bin/puppet node clean ubuntu-devops|| true
 
 # Habilito el agente
-sudo puppet agent --certname ubuntu-devops --enable
+sudo /opt/puppetlabs/bin/puppet agent --certname ubuntu-devops --enable
