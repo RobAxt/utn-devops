@@ -62,9 +62,9 @@ sudo mkdir -p "$PUPPET_ENV_DIR/modules"
 
 sudo chown -R puppet:puppet /etc/puppetlabs
 
-echo "=== Transfiriendo configuración y manifiestos desde el Host (/Puppet) ==="
+echo "=== Transfiriendo configuración y manifiestos desde el Host (/Vagrant/Puppet) ==="
 
-SRC_DIR="/Puppet"
+SRC_DIR="/Vagrant/Puppet"
 
 if [ -d "$SRC_DIR" ]; then
     echo "Usando directorio de Puppet en host: $SRC_DIR"
@@ -90,22 +90,33 @@ else
     echo "[ADVERTENCIA] No existe el directorio $SRC_DIR."
 fi
 
+echo "=== Configurando /etc/hosts para Puppet ==="
+HOST_FILE="/etc/hosts"
+NEW_LOCALHOST="127.0.0.1  ubuntu-devops"
+
+echo "Agregando entrada a /etc/hosts..."
+echo "$NEW_LOCALHOST" | sudo tee -a "$HOST_FILE" > /dev/null
+
 # Ajustar permisos después de copiar
 sudo chown -R puppet:puppet /etc/puppetlabs
 
+# Limpiar certificados SSL previos
+sudo rm -rf /var/lib/puppet/ssl
 
 # Habilitar y arrancar puppetserver
 sudo systemctl enable puppetserver
 sudo systemctl restart puppetserver
 
+echo "=== Configurando Puppet agent ==="
 # Habilitar el agente de Puppet
 sudo /opt/puppetlabs/bin/puppet resource service puppet ensure=running enable=true
 
-echo
-echo "==============================================="
-echo " Puppet agent y master instalados."
-echo " Usuario y grupo 'puppet' gestionados."
-echo " Configuración y manifiestos copiados (si existen en /Puppet)."
-echo " Agente de Puppet habilitado y en ejecución."
-echo "==============================================="
-echo
+# Ejecutar el agente de Puppet una vez
+sudo /opt/puppetlabs/bin/puppet agent -t
+
+# limpieza de configuración del dominio utn-devops.localhost es nuestro nodo agente.
+# en nuestro caso es la misma máquina
+sudo puppet node clean ubuntu-devops|| true
+
+# Habilito el agente
+sudo puppet agent --certname ubuntu-devops --enable

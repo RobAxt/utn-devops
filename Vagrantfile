@@ -13,12 +13,12 @@ Vagrant.configure("2") do |config|
   config.vm.network "forwarded_port", guest: 8080, host: 8080
 
   # Sincronización de carpetas
-  config.vm.synced_folder ".", "/Puppet"
+  config.vm.synced_folder ".", "/Vagrant"
 
   # Recursos de la VM
   config.vm.provider "virtualbox" do |vb|
     vb.name = "ubuntu-devops"
-    vb.memory = 2048
+    vb.memory = 4096
     vb.cpus = 2
   end
 
