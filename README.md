@@ -8,17 +8,11 @@ Este entorno implementa una máquina virtual Ubuntu 22.04 (Jammy) aprovisionada 
 
 ### 1. **Puppet Master + Puppet Agent en la misma VM**
 El provisioning instala:
-- Puppet Server (master)
+- Puppet Master (server)
 - Puppet Agent (cliente)
 - Java OpenJDK 17 (requisito de Puppet Server)
 - Gestión del usuario y grupo `puppet`
 - Habilitación del agente Puppet como servicio
-
-El agente consulta al server local mediante:
-```
-server = localhost
-environment = production
-```
 
 ---
 
@@ -102,23 +96,6 @@ Este script realiza:
   - `modules/`
 - Habilitación del servicio Puppet Agent
 - Levantado del servicio Puppet Server
-
----
-
-### 6. **Problema detectado y solución**
-El servidor Puppet no arrancaba debido a:
-
-```
-Native memory allocation (mmap) failed to map 2147483648 bytes
-```
-
-Causa:
-- Puppet Server usa por defecto `-Xms2g -Xmx2g`
-- La VM tenía solo 2GB de RAM y **0 swap**
-
-Solución implementada:
-- Reducción de heap Java a **512m** mediante edición de:
-  `/etc/puppetlabs/puppetserver/conf.d/java_args.conf`
 
 ---
 
