@@ -126,8 +126,7 @@ puppet/
     └── jenkins/
         └── manifests/
             └── init.pp
-provision_puppet.sh
-add_hosts_entry.sh
+provision.sh
 Vagrantfile
 ```
 
@@ -135,5 +134,5 @@ Vagrantfile
 
 ##  Estado final del laboratorio
 
-![Página inicial de Jenkins](GRUPO2-PRACTICA3_1.png)
+![Alta de usuario administrador en Jenkins](GRUPO2-PRACTICA3_1.png)
 ![Instalacion de dependencias en Jenkins](GRUPO2-PRACTICA3_2.png)

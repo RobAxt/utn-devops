@@ -1,22 +1,6 @@
 #!/bin/bash
 set -e
 
-echo "=== Verificando Ubuntu 22.04 (jammy) ==="
-if [ ! -f /etc/os-release ]; then
-    echo "No se encontró /etc/os-release."
-    exit 1
-fi
-
-. /etc/os-release
-
-if [[ "$ID" != "ubuntu" || "$VERSION_CODENAME" != "jammy" ]]; then
-    echo "Detectado: $PRETTY_NAME"
-    exit 1
-fi
-
-echo "Sistema detectado: $PRETTY_NAME"
-sleep 1
-
 echo "=== Instalando Puppet agent y Puppet master ==="
 sudo apt update -y
 sudo apt install -y wget lsb-release
@@ -114,9 +98,3 @@ sudo /opt/puppetlabs/bin/puppet resource service puppet ensure=running enable=tr
 # Ejecutar el agente de Puppet una vez
 sudo /opt/puppetlabs/bin/puppet agent -t
 
-# limpieza de configuración del dominio utn-devops.localhost es nuestro nodo agente.
-# en nuestro caso es la misma máquina
-sudo /opt/puppetlabs/bin/puppet node clean ubuntu-devops|| true
-
-# Habilito el agente
-sudo /opt/puppetlabs/bin/puppet agent --certname ubuntu-devops --enable
